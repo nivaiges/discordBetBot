@@ -66,13 +66,19 @@ function rankToValue(tier, division) {
 }
 
 function valueToRank(value) {
+  let tier, display;
   if (value >= 28) {
     const tierIdx = Math.min(Math.round(value / 4), 9);
-    return TIERS[tierIdx];
+    tier = TIERS[tierIdx];
+    display = tier;
+  } else {
+    const tierIdx = Math.floor(value / 4);
+    const divIdx = Math.round(value % 4);
+    tier = TIERS[tierIdx];
+    display = `${tier} ${DIVISIONS[Math.min(divIdx, 3)]}`;
   }
-  const tierIdx = Math.floor(value / 4);
-  const divIdx = Math.round(value % 4);
-  return `${TIERS[tierIdx]} ${DIVISIONS[Math.min(divIdx, 3)]}`;
+  const emoji = config.getRankEmoji(tier);
+  return emoji ? `${emoji} ${display}` : display;
 }
 
 async function getRankValue(puuid, region) {

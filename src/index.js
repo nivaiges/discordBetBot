@@ -30,6 +30,7 @@ import * as baltop from './commands/baltop.js';
 import * as stats from './commands/stats.js';
 import * as rank from './commands/rank.js';
 import * as bethere from './commands/bethere.js';
+import * as peak from './commands/peak.js';
 
 // ── Validate env ─────────────────────────────────────────────────────────────
 
@@ -47,7 +48,7 @@ if (!RIOT_API_KEY) {
 
 // ── Build command collection ─────────────────────────────────────────────────
 
-const commands = [collect, adduser, bet, baltop, stats, rank, bethere];
+const commands = [collect, adduser, bet, baltop, stats, rank, bethere, peak];
 const commandCollection = new Collection();
 for (const cmd of commands) {
   commandCollection.set(cmd.data.name, cmd);

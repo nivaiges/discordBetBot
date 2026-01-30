@@ -67,6 +67,26 @@ const config = {
   // Parley (over/under stat bets)
   parleyChance: 0.1,          // 10% of matches get a parley
   parleyPayoutMultiplier: 2,
+
+  // Custom rank emoji — upload rank icons to your server, then paste emoji IDs here.
+  // To get an ID: type \:iron: in Discord and send — it shows <:iron:123456789>.
+  // Format: '<:name:ID>' — leave empty string to skip that tier.
+  rankEmoji: {
+    IRON: '<:Iron:1466911638165917787>',
+    BRONZE: '<:Bronze:1466911611913506929>',
+    SILVER: '<:Silver:1466911584679887089>',
+    GOLD: '<:Gold:1466911558386061558>',
+    PLATINUM: '<:Platinum:1466911533727617128>',
+    EMERALD: '',
+    DIAMOND: '<:Diamond:1466911477435859250>',
+    MASTER: '<:Master:1466911447715155989>',
+    GRANDMASTER: '<:Grandmaster:1466911417759436865>',
+    CHALLENGER: '<:Challenger:1466911383810740347>',
+  },
+
+  getRankEmoji(tier) {
+    return this.rankEmoji[tier] || '';
+  },
 };
 
 export default config;

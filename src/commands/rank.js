@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getRankedStatsByPuuid } from '../riot.js';
-import { getTrackedPlayers } from '../db.js';
+import { getTrackedPlayers, updatePeakRank } from '../db.js';
+import config from '../../config.js';
 
 const TIER_ORDER = [
   'CHALLENGER', 'GRANDMASTER', 'MASTER',
@@ -47,12 +48,15 @@ export async function execute(interaction) {
     if (!solo) {
       results.push({ tag: player.riot_tag, rank: null });
     } else {
+      const value = tierValue(solo.tier, solo.rank, solo.leaguePoints);
+      updatePeakRank(guildId, player.puuid, solo.tier, solo.rank, solo.leaguePoints, value);
       results.push({
         tag: player.riot_tag,
+        tier: solo.tier,
         rank: `${solo.tier} ${solo.rank}`,
         lp: solo.leaguePoints,
         record: `${solo.wins}W / ${solo.losses}L`,
-        value: tierValue(solo.tier, solo.rank, solo.leaguePoints),
+        value,
       });
     }
   }
@@ -68,7 +72,9 @@ export async function execute(interaction) {
   const lines = results.map((r, i) => {
     const pos = `${i + 1}.`;
     if (r.rank) {
-      return `${pos} **${r.tag}** — ${r.rank} (${r.lp} LP) • ${r.record}`;
+      const emoji = config.getRankEmoji(r.tier);
+      const prefix = emoji ? `${emoji} ` : '';
+      return `${pos} ${prefix}**${r.tag}** — ${r.rank} (${r.lp} LP) • ${r.record}`;
     }
     return `${pos} **${r.tag}** — Unranked`;
   });

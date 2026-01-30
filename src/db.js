@@ -107,6 +107,11 @@ function migrate() {
     db.exec(`ALTER TABLE tracked_players ADD COLUMN daily_losses INTEGER NOT NULL DEFAULT 0`);
     db.exec(`ALTER TABLE tracked_players ADD COLUMN daily_reset_date TEXT`);
   }
+  if (!tpCols.includes('peak_tier')) {
+    db.exec(`ALTER TABLE tracked_players ADD COLUMN peak_tier TEXT`);
+    db.exec(`ALTER TABLE tracked_players ADD COLUMN peak_rank TEXT`);
+    db.exec(`ALTER TABLE tracked_players ADD COLUMN peak_lp INTEGER`);
+  }
 }
 
 // ── Query helpers ────────────────────────────────────────────────────────────
@@ -335,6 +340,29 @@ export function getDailyRecord(guildId, puuid) {
   const player = db.prepare('SELECT daily_wins, daily_losses, daily_reset_date FROM tracked_players WHERE guild_id = ? AND puuid = ?').get(guildId, puuid);
   if (!player || player.daily_reset_date !== today) return { wins: 0, losses: 0 };
   return { wins: player.daily_wins, losses: player.daily_losses };
+}
+
+// Peak rank tracking
+export function updatePeakRank(guildId, puuid, tier, rank, lp, rankValue) {
+  const player = db.prepare('SELECT peak_tier, peak_rank, peak_lp FROM tracked_players WHERE guild_id = ? AND puuid = ?').get(guildId, puuid);
+  if (!player) return;
+  // Calculate current peak value for comparison
+  const TIERS = ['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER'];
+  const DIVISIONS = ['IV', 'III', 'II', 'I'];
+  let peakValue = 0;
+  if (player.peak_tier) {
+    const ti = TIERS.indexOf(player.peak_tier);
+    const di = DIVISIONS.indexOf(player.peak_rank || 'I');
+    peakValue = (ti >= 7 ? ti * 4 : ti * 4 + di) * 100 + (player.peak_lp || 0);
+  }
+  const currentValue = (rankValue) * 100 + lp;
+  if (currentValue > peakValue) {
+    db.prepare('UPDATE tracked_players SET peak_tier = ?, peak_rank = ?, peak_lp = ? WHERE guild_id = ? AND puuid = ?').run(tier, rank, lp, guildId, puuid);
+  }
+}
+
+export function getPeakRanks(guildId) {
+  return db.prepare('SELECT riot_tag, peak_tier, peak_rank, peak_lp FROM tracked_players WHERE guild_id = ?').all(guildId);
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
