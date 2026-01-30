@@ -1,0 +1,23 @@
+{
+  "name": "discord-bet-bot",
+  "version": "1.0.0",
+  "description": "Discord bot for betting on League of Legends matches using Riot API",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test tests/"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "discord.js": "^14.16.0",
+    "dotenv": "^16.4.0",
+    "pino": "^9.5.0"
+  },
+  "devDependencies": {
+    "pino-pretty": "^13.0.0"
+  }
+}

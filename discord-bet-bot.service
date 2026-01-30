@@ -1,0 +1,21 @@
+[Unit]
+Description=Discord Bet Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/discordBetBot
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=10
+EnvironmentFile=/home/pi/discordBetBot/.env
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/pi/discordBetBot
+
+[Install]
+WantedBy=multi-user.target
