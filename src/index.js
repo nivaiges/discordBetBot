@@ -99,11 +99,9 @@ client.on('interactionCreate', async (interaction) => {
     const id = interaction.customId;
     if (!id.startsWith('bet_win_') && !id.startsWith('bet_lose_')) return;
 
-    // Parse: bet_{prediction}_{matchId}_{puuid}
-    const parts = id.split('_');
-    const prediction = parts[1]; // win or lose
-    const puuid = parts[parts.length - 1];
-    const matchId = parts.slice(2, -1).join('_');
+    // Parse: bet_{prediction}_{matchId}
+    const prediction = id.startsWith('bet_win_') ? 'win' : 'lose';
+    const matchId = id.startsWith('bet_win_') ? id.slice('bet_win_'.length) : id.slice('bet_lose_'.length);
 
     // Check betting window
     if (!isBettingOpen(matchId)) {
@@ -112,7 +110,7 @@ client.on('interactionCreate', async (interaction) => {
 
     // Show modal to ask for amount
     const modal = new ModalBuilder()
-      .setCustomId(`betmodal_${prediction}_${matchId}_${puuid}`)
+      .setCustomId(`betmodal_${prediction}_${matchId}`)
       .setTitle(`Bet ${prediction.toUpperCase()} — Enter Amount`);
 
     const amountInput = new TextInputBuilder()
@@ -132,10 +130,9 @@ client.on('interactionCreate', async (interaction) => {
     const id = interaction.customId;
     if (!id.startsWith('betmodal_')) return;
 
-    const parts = id.split('_');
-    const prediction = parts[1];
-    const puuid = parts[parts.length - 1];
-    const matchId = parts.slice(2, -1).join('_');
+    // Parse: betmodal_{prediction}_{matchId}
+    const prediction = id.split('_')[1];
+    const matchId = id.slice(`betmodal_${prediction}_`.length);
 
     const amountStr = interaction.fields.getTextInputValue('bet_amount');
     const amount = parseInt(amountStr, 10);
@@ -171,9 +168,9 @@ client.on('interactionCreate', async (interaction) => {
       return interaction.reply({ content: `⚠️ You already bet **${existing.prediction.toUpperCase()}** (${existing.amount.toLocaleString()} 🪙) on this match.`, ephemeral: true });
     }
 
-    // Place bet
+    // Place bet (puuid comes from the active match record)
     deductCoins(guildId, userId, amount);
-    placeBet(guildId, userId, matchId, puuid, prediction, amount);
+    placeBet(guildId, userId, matchId, match.puuid, prediction, amount);
 
     const emoji = prediction === 'win' ? '🟢' : '🔴';
     return interaction.reply(

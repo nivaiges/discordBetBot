@@ -76,11 +76,11 @@ async function checkForNewMatches() {
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId(`bet_win_${matchId}_${player.puuid}`)
+          .setCustomId(`bet_win_${matchId}`)
           .setLabel('🟢 WIN')
           .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
-          .setCustomId(`bet_lose_${matchId}_${player.puuid}`)
+          .setCustomId(`bet_lose_${matchId}`)
           .setLabel('🔴 LOSE')
           .setStyle(ButtonStyle.Danger),
       );
