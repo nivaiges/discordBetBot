@@ -30,10 +30,12 @@ import {
   deductCoins,
   placeBet,
   isEmojiEnabled,
+  checkAchievements,
 } from './db.js';
 
 let client = null;
 let pollTimer = null;
+let tickInProgress = false;
 
 export async function startPoller(discordClient) {
   client = discordClient;
@@ -51,11 +53,18 @@ export function stopPoller() {
 }
 
 async function pollTick() {
+  if (tickInProgress) {
+    logger.debug('Skipping poll tick — previous tick still running');
+    return;
+  }
+  tickInProgress = true;
   try {
     await checkForNewMatches();
     await checkActiveMatches();
   } catch (err) {
     logger.error({ err }, 'Poller tick error');
+  } finally {
+    tickInProgress = false;
   }
 }
 
@@ -171,7 +180,16 @@ async function checkForNewMatches() {
       const sideLabel = trackedTeamId === 100 ? '🔵 Blue Side' : '🔴 Red Side';
       const allies = participants.filter(p => p.teamId === trackedTeamId);
       const enemies = participants.filter(p => p.teamId !== trackedTeamId);
-      const formatTeam = (team) => team.map(p => getChampionName(p.championId)).join(', ');
+      const formatTeam = (team) => team.map(p => {
+        const champ = getChampionName(p.championId);
+        return p.puuid === player.puuid ? `**${champ}** (${name})` : champ;
+      }).join(', ');
+      const buildMultisearch = (team) => {
+        const names = team.map(p => p.riotId).filter(Boolean);
+        if (!names.length) return null;
+        const encoded = names.map(n => encodeURIComponent(n)).join(',');
+        return `https://u.gg/multisearch?summoners=${encoded}&region=${player.region}`;
+      };
 
       // Roll for parley (over/under or yes/no stat bet)
       const hasParley = Math.random() < config.parleyChance;
@@ -196,8 +214,8 @@ async function checkForNewMatches() {
         .setDescription(`**${name}**${titleChamp} (${sideLabel})\n\n⏰ Betting closes in **5 minutes** — place your bets!\n🟢 WIN pays **${config.payoutMultiplier}x** · 🔴 LOSE pays **${config.losePayoutMultiplier}x**`)
         .addFields(
           { name: '📊 Avg Rank', value: avgRank, inline: true },
-          { name: `🔵 ${name}'s Team`, value: formatTeam(allies) || 'Unknown', inline: false },
-          { name: '🔴 Enemy Team', value: formatTeam(enemies) || 'Unknown', inline: false },
+          { name: `🔵 ${name}'s Team`, value: (formatTeam(allies) || 'Unknown') + (buildMultisearch(allies) ? `\n[u.gg Multisearch](${buildMultisearch(allies)})` : ''), inline: false },
+          { name: '🔴 Enemy Team', value: (formatTeam(enemies) || 'Unknown') + (buildMultisearch(enemies) ? `\n[u.gg Multisearch](${buildMultisearch(enemies)})` : ''), inline: false },
         )
         .setColor(0x2ecc71)
         .setTimestamp();
@@ -371,6 +389,9 @@ async function checkActiveMatches() {
       lines.push(`${emoji} <@${bet.discord_id}> bet **${bet.prediction.toUpperCase()}** (${bet.amount.toLocaleString()} 🪙) — ${resultText}${streakText}`);
     }
 
+    // Collect all bettor IDs for achievement checks
+    const bettorIds = new Set(bets.map(b => b.discord_id));
+
     // ── Parley settlement ──────────────────────────────────────────────────
     const parley = getMatchParley(match.guild_id, match.match_id);
     const parleyLines = [];
@@ -408,6 +429,7 @@ async function checkActiveMatches() {
       }
 
       const parleyBets = getUnresolvedParleyBetsByMatch(match.guild_id, match.match_id);
+      for (const pb of parleyBets) bettorIds.add(pb.discord_id);
       for (const pb of parleyBets) {
         const correct = (pb.prediction === 'over') === overWins;
         const outcome = correct ? 'correct' : 'incorrect';
@@ -422,6 +444,15 @@ async function checkActiveMatches() {
           ? (pb.prediction === 'over' ? 'YES' : 'NO')
           : pb.prediction.toUpperCase();
         parleyLines.push(`${pbEmoji} <@${pb.discord_id}> bet **${displayPred}** (${pb.amount.toLocaleString()} 🪙) — ${resultText}`);
+      }
+    }
+
+    // Check achievements for all bettors in this match
+    const achLines = [];
+    for (const discordId of bettorIds) {
+      const newAch = checkAchievements(match.guild_id, discordId);
+      for (const ach of newAch) {
+        achLines.push(`🏆 <@${discordId}> unlocked **${ach.label}**`);
       }
     }
 
@@ -448,6 +479,9 @@ async function checkActiveMatches() {
       (lines.length > 0 ? lines.join('\n') : '_No bets were placed on this match._');
     if (parleyLines.length > 0) {
       description += '\n\n' + parleyLines.join('\n');
+    }
+    if (achLines.length > 0) {
+      description += '\n\n' + achLines.join('\n');
     }
 
     const embed = new EmbedBuilder()

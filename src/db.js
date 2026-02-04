@@ -137,6 +137,16 @@ function migrate() {
     db.exec(`ALTER TABLE tracked_players ADD COLUMN peak_rank TEXT`);
     db.exec(`ALTER TABLE tracked_players ADD COLUMN peak_lp INTEGER`);
   }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS achievements (
+      guild_id    TEXT NOT NULL,
+      discord_id  TEXT NOT NULL,
+      achievement TEXT NOT NULL,
+      unlocked_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (guild_id, discord_id, achievement)
+    );
+  `);
 }
 
 // ── Query helpers ────────────────────────────────────────────────────────────
@@ -443,6 +453,73 @@ export function getAutoBets(guildId, discordId) {
 
 export function getAutoBetsForMatch(guildId, puuid) {
   return db.prepare('SELECT * FROM auto_bets WHERE guild_id = ? AND puuid = ?').all(guildId, puuid);
+}
+
+// Achievements
+const ACHIEVEMENT_DEFS = [
+  { id: 'bets_10',    label: '🎰 Gambler — 10 bets placed',          check: u => u.correct + u.incorrect >= 10 },
+  { id: 'bets_50',    label: '🎰 Regular — 50 bets placed',          check: u => u.correct + u.incorrect >= 50 },
+  { id: 'bets_100',   label: '🎰 Veteran — 100 bets placed',         check: u => u.correct + u.incorrect >= 100 },
+  { id: 'bets_500',   label: '🎰 Addict — 500 bets placed',          check: u => u.correct + u.incorrect >= 500 },
+  { id: 'bets_1000',  label: '🎰 Degenerate — 1,000 bets placed',    check: u => u.correct + u.incorrect >= 1000 },
+  { id: 'wins_10',    label: '✅ Lucky — 10 bets won',                check: u => u.correct >= 10 },
+  { id: 'wins_50',    label: '✅ Sharp — 50 bets won',                check: u => u.correct >= 50 },
+  { id: 'wins_100',   label: '✅ Oracle — 100 bets won',              check: u => u.correct >= 100 },
+  { id: 'wins_1000',  label: '✅ Prophet — 1,000 bets won',           check: u => u.correct >= 1000 },
+  { id: 'streak_5',   label: '🔥 Hot Hand — 5 win streak',           check: u => u.best_streak >= 5 },
+  { id: 'streak_10',  label: '🔥 On Fire — 10 win streak',           check: u => u.best_streak >= 10 },
+  { id: 'streak_20',  label: '🔥 Untouchable — 20 win streak',       check: u => u.best_streak >= 20 },
+  { id: 'streak_50',  label: '🔥 Legendary — 50 win streak',         check: u => u.best_streak >= 50 },
+  { id: 'streak_100', label: '🔥 Mythical — 100 win streak',         check: u => u.best_streak >= 100 },
+];
+
+export { ACHIEVEMENT_DEFS };
+
+export function getUnlockedAchievements(guildId, discordId) {
+  return db.prepare('SELECT achievement FROM achievements WHERE guild_id = ? AND discord_id = ?').all(guildId, discordId).map(r => r.achievement);
+}
+
+export function unlockAchievement(guildId, discordId, achievementId) {
+  return db.prepare('INSERT OR IGNORE INTO achievements (guild_id, discord_id, achievement) VALUES (?, ?, ?)').run(guildId, discordId, achievementId);
+}
+
+export function checkAchievements(guildId, discordId) {
+  const user = getUser(guildId, discordId);
+  if (!user) return [];
+  const unlocked = new Set(getUnlockedAchievements(guildId, discordId));
+  const newlyUnlocked = [];
+  for (const def of ACHIEVEMENT_DEFS) {
+    if (!unlocked.has(def.id) && def.check(user)) {
+      unlockAchievement(guildId, discordId, def.id);
+      newlyUnlocked.push(def);
+    }
+  }
+  return newlyUnlocked;
+}
+
+// Bet history
+export function getBetHistory(guildId, discordId, limit = 10) {
+  return db.prepare(`
+    SELECT b.*, tp.riot_tag FROM bets b
+    LEFT JOIN tracked_players tp ON b.guild_id = tp.guild_id AND b.puuid = tp.puuid
+    WHERE b.guild_id = ? AND b.discord_id = ?
+    ORDER BY b.placed_at DESC LIMIT ?
+  `).all(guildId, discordId, limit);
+}
+
+// Per-player betting record
+export function getPerPlayerRecord(guildId, discordId) {
+  return db.prepare(`
+    SELECT b.puuid, tp.riot_tag,
+      SUM(CASE WHEN b.outcome = 'correct' THEN 1 ELSE 0 END) as wins,
+      SUM(CASE WHEN b.outcome = 'incorrect' THEN 1 ELSE 0 END) as losses,
+      SUM(b.amount) as total_wagered
+    FROM bets b
+    LEFT JOIN tracked_players tp ON b.guild_id = tp.guild_id AND b.puuid = tp.puuid
+    WHERE b.guild_id = ? AND b.discord_id = ? AND b.outcome IS NOT NULL
+    GROUP BY b.puuid
+    ORDER BY (wins + losses) DESC
+  `).all(guildId, discordId);
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────

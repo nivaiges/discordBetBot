@@ -11,7 +11,8 @@ A Discord bot for betting on friends' League of Legends games using the Riot API
 - `/autobet [player] [prediction] [amount]` — Auto-bet on a player every game
 - `/give <@user> <amount>` — Give coins to another user
 - `/baltop` — Leaderboard of top coin holders
-- `/stats` — Your personal betting stats (W/L, streak, wagered, won)
+- `/stats` — Your personal betting stats (W/L, streak, net profit, per-player record, achievements)
+- `/history` — Your last 10 bets with outcomes
 - `/rank` — Leaderboard of all tracked players' Solo/Duo ranks
 - `/peak` — All-time peak Solo/Duo rank for each tracked player
 - `/emoji <on|off>` — Toggle rank emojis on/off (for servers without custom emoji)
@@ -32,6 +33,10 @@ A Discord bot for betting on friends' League of Legends games using the Riot API
 - **Peak rank tracking** — Highest rank is recorded after each win
 - **Auto-cleanup** — Match detected and betting closed messages are deleted when the match ends
 - **Parley bets** — ~17.5% of matches get a prop bet (over/under or yes/no) with 2x payout. Stats: kills, deaths, KDA, CS, vision score, game length, first blood, triple kill
+- **Achievements** — Milestone unlocks for bets placed (10/50/100/500/1k), bets won (10/50/100/1k), and win streaks (5/10/20/50/100), announced in match results and shown in `/stats`
+- **Bet history** — `/history` shows your last 10 bets with outcomes and payouts
+- **Net profit** — `/stats` shows total profit/loss (total won minus total wagered)
+- **Per-player record** — `/stats` shows your W/L and amount wagered per tracked player
 - **PUUID auto-refresh** — PUUIDs are re-fetched on startup when rotating Riot API keys
 
 ## Self-Hosting Guide
