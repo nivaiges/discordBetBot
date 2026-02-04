@@ -24,6 +24,13 @@ import {
   recordDailyResult,
   getDailyRecord,
   updatePeakRank,
+  getAutoBetsForMatch,
+  ensureUser,
+  getUser,
+  getUserBetOnMatch,
+  deductCoins,
+  placeBet,
+  isEmojiEnabled,
 } from './db.js';
 
 let client = null;
@@ -66,7 +73,7 @@ function rankToValue(tier, division) {
   return tierIdx * 4 + DIVISIONS.indexOf(division);
 }
 
-function valueToRank(value) {
+function valueToRank(value, guildId) {
   let tier, display;
   if (value >= 28) {
     const tierIdx = Math.min(Math.round(value / 4), 9);
@@ -78,7 +85,8 @@ function valueToRank(value) {
     tier = TIERS[tierIdx];
     display = `${tier} ${DIVISIONS[Math.min(divIdx, 3)]}`;
   }
-  const emoji = config.getRankEmoji(tier);
+  const emojiOn = guildId ? isEmojiEnabled(guildId) : true;
+  const emoji = emojiOn ? config.getRankEmoji(tier) : '';
   return emoji ? `${emoji} ${display}` : display;
 }
 
@@ -99,7 +107,7 @@ async function getRankValue(puuid, region) {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function getAverageRank(participants, region) {
+async function getAverageRank(participants, region, guildId) {
   // Sample 5 of 10 players to halve API calls (10 calls instead of 20)
   const sampled = participants.length > 5
     ? participants.sort(() => 0.5 - Math.random()).slice(0, 5)
@@ -113,7 +121,7 @@ async function getAverageRank(participants, region) {
   }
   if (values.length === 0) return 'Unranked';
   const avg = values.reduce((a, b) => a + b, 0) / values.length;
-  return valueToRank(avg);
+  return valueToRank(avg, guildId);
 }
 
 async function checkForNewMatches() {
@@ -139,7 +147,7 @@ async function checkForNewMatches() {
       logger.info({ guildId: player.guild_id, riotTag: player.riot_tag, matchId }, 'New active match detected');
       registerBettingWindow(matchId);
 
-      const avgRank = await getAverageRank(game.participants || [], player.region);
+      const avgRank = await getAverageRank(game.participants || [], player.region, player.guild_id);
 
       // Roll for parley (over/under stat bet)
       const hasParley = Math.random() < config.parleyChance;
@@ -159,7 +167,7 @@ async function checkForNewMatches() {
 
       const embed = new EmbedBuilder()
         .setTitle('🎮 Match Detected!')
-        .setDescription(`**${name}** just entered a match!\n\n⏰ Betting closes in **3 minutes** — place your bets!`)
+        .setDescription(`**${name}** just entered a match!\n\n⏰ Betting closes in **5 minutes** — place your bets!\n🟢 WIN pays **${config.payoutMultiplier}x** · 🔴 LOSE pays **${config.losePayoutMultiplier}x**`)
         .addFields({ name: '📊 Avg Rank', value: avgRank, inline: true })
         .setColor(0x2ecc71)
         .setTimestamp();
@@ -196,6 +204,29 @@ async function checkForNewMatches() {
 
       const msg = await sendToGuild(player.guild_id, { embeds: [embed], components });
       if (msg) setMatchMessageId(player.guild_id, matchId, msg.id);
+
+      // Process auto-bets
+      const autoBets = getAutoBetsForMatch(player.guild_id, player.puuid);
+      for (const ab of autoBets) {
+        const existing = getUserBetOnMatch(player.guild_id, ab.discord_id, matchId);
+        if (existing) continue;
+
+        const user = ensureUser(player.guild_id, ab.discord_id);
+        if (user.coins < ab.amount) {
+          sendToGuild(player.guild_id, {
+            content: `🤖 Auto-bet skipped for <@${ab.discord_id}> — insufficient coins (need **${ab.amount.toLocaleString()}** 🪙, have **${user.coins.toLocaleString()}** 🪙)`,
+          });
+          continue;
+        }
+
+        deductCoins(player.guild_id, ab.discord_id, ab.amount);
+        placeBet(player.guild_id, ab.discord_id, matchId, player.puuid, ab.prediction, ab.amount);
+
+        const emoji = ab.prediction === 'win' ? '🟢' : '🔴';
+        sendToGuild(player.guild_id, {
+          content: `🤖 Auto-bet: <@${ab.discord_id}> bet ${emoji} **${ab.prediction.toUpperCase()}** for **${ab.amount.toLocaleString()}** 🪙`,
+        });
+      }
 
       // Disable buttons after 3 minutes
       setTimeout(() => {
@@ -276,14 +307,20 @@ async function checkActiveMatches() {
       const predictedWin = bet.prediction === 'win';
       const correct = predictedWin === trackedPlayerWon;
       const outcome = correct ? 'correct' : 'incorrect';
-      const payout = correct ? bet.amount * config.payoutMultiplier : 0;
+      const multiplier = bet.prediction === 'win' ? config.payoutMultiplier : config.losePayoutMultiplier;
+      const payout = correct ? bet.amount * multiplier : 0;
 
       resolveBet(bet.id, outcome);
       updateUserStats(match.guild_id, bet.discord_id, correct, payout);
 
       const emoji = correct ? '✅' : '❌';
       const resultText = correct ? `won **${payout.toLocaleString()}** 🪙` : 'lost their bet';
-      lines.push(`${emoji} <@${bet.discord_id}> bet **${bet.prediction.toUpperCase()}** (${bet.amount.toLocaleString()} 🪙) — ${resultText}`);
+      let streakText = '';
+      if (correct) {
+        const updated = getUser(match.guild_id, bet.discord_id);
+        if (updated && updated.current_streak >= 3) streakText = ` (${updated.current_streak} streak 🔥)`;
+      }
+      lines.push(`${emoji} <@${bet.discord_id}> bet **${bet.prediction.toUpperCase()}** (${bet.amount.toLocaleString()} 🪙) — ${resultText}${streakText}`);
     }
 
     // ── Parley settlement ──────────────────────────────────────────────────
@@ -321,7 +358,11 @@ async function checkActiveMatches() {
     const outcomeEmoji = trackedPlayerWon ? '🏆' : '💀';
     const outcomeText = trackedPlayerWon ? 'WON' : 'LOST';
 
-    let description = `**${playerName}** has **${outcomeText}** the match! (Today: ${daily.wins}W / ${daily.losses}L)\n\n` +
+    const total = daily.wins + daily.losses;
+    const winRate = total > 0 ? daily.wins / total : 0;
+    const dailySuffix = winRate > 0.5 ? ` (Today: ${daily.wins}W / ${daily.losses}L 🔥)` : '';
+
+    let description = `**${playerName}** has **${outcomeText}** the match!${dailySuffix}\n\n` +
       (lines.length > 0 ? lines.join('\n') : '_No bets were placed on this match._');
     if (parleyLines.length > 0) {
       description += '\n\n' + parleyLines.join('\n');

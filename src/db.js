@@ -87,6 +87,12 @@ function migrate() {
     );
   `);
 
+  // Add emoji toggle to guild_settings
+  const gsCols = db.prepare("PRAGMA table_info('guild_settings')").all().map(c => c.name);
+  if (!gsCols.includes('emoji_enabled')) {
+    db.exec(`ALTER TABLE guild_settings ADD COLUMN emoji_enabled INTEGER NOT NULL DEFAULT 1`);
+  }
+
   // Add parley columns to active_matches if missing
   const cols = db.prepare("PRAGMA table_info('active_matches')").all().map(c => c.name);
   if (!cols.includes('parley_stat')) {
@@ -107,6 +113,25 @@ function migrate() {
     db.exec(`ALTER TABLE tracked_players ADD COLUMN daily_losses INTEGER NOT NULL DEFAULT 0`);
     db.exec(`ALTER TABLE tracked_players ADD COLUMN daily_reset_date TEXT`);
   }
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS auto_bets (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      guild_id    TEXT NOT NULL,
+      discord_id  TEXT NOT NULL,
+      puuid       TEXT NOT NULL,
+      prediction  TEXT NOT NULL CHECK(prediction IN ('win', 'lose')),
+      amount      INTEGER NOT NULL CHECK(amount > 0),
+      UNIQUE(guild_id, discord_id, puuid)
+    );
+  `);
+
+  // Add betting streak columns to users
+  const userCols = db.prepare("PRAGMA table_info('users')").all().map(c => c.name);
+  if (!userCols.includes('current_streak')) {
+    db.exec(`ALTER TABLE users ADD COLUMN current_streak INTEGER NOT NULL DEFAULT 0`);
+    db.exec(`ALTER TABLE users ADD COLUMN best_streak INTEGER NOT NULL DEFAULT 0`);
+  }
+
   if (!tpCols.includes('peak_tier')) {
     db.exec(`ALTER TABLE tracked_players ADD COLUMN peak_tier TEXT`);
     db.exec(`ALTER TABLE tracked_players ADD COLUMN peak_rank TEXT`);
@@ -173,6 +198,23 @@ export function updateTrackedPlayerPuuid(id, puuid) {
   return db.prepare('UPDATE tracked_players SET puuid = ? WHERE id = ?').run(puuid, id);
 }
 
+export function removeTrackedPlayer(guildId, riotTag) {
+  const player = db.prepare('SELECT * FROM tracked_players WHERE guild_id = ? AND riot_tag = ? COLLATE NOCASE').get(guildId, riotTag);
+  if (!player) return null;
+  db.prepare('DELETE FROM auto_bets WHERE guild_id = ? AND puuid = ?').run(guildId, player.puuid);
+  db.prepare('DELETE FROM tracked_players WHERE id = ?').run(player.id);
+  return player;
+}
+
+export function transferCoins(guildId, fromId, toId, amount) {
+  const sender = ensureUser(guildId, fromId);
+  if (sender.coins < amount) return false;
+  db.prepare('UPDATE users SET coins = coins - ?, updated_at = datetime(\'now\') WHERE guild_id = ? AND discord_id = ?').run(amount, guildId, fromId);
+  ensureUser(guildId, toId);
+  db.prepare('UPDATE users SET coins = coins + ?, updated_at = datetime(\'now\') WHERE guild_id = ? AND discord_id = ?').run(amount, guildId, toId);
+  return true;
+}
+
 // Active matches
 export function upsertActiveMatch(guildId, puuid, matchId) {
   return db.prepare(`
@@ -237,12 +279,15 @@ export function resolveBet(betId, outcome) {
 export function updateUserStats(guildId, discordId, correct, amountWon) {
   if (correct) {
     db.prepare(`
-      UPDATE users SET correct = correct + 1, coins = coins + ?, total_won = total_won + ?, updated_at = datetime('now')
+      UPDATE users SET correct = correct + 1, coins = coins + ?, total_won = total_won + ?,
+        current_streak = current_streak + 1,
+        best_streak = MAX(best_streak, current_streak + 1),
+        updated_at = datetime('now')
       WHERE guild_id = ? AND discord_id = ?
     `).run(amountWon, amountWon, guildId, discordId);
   } else {
     db.prepare(`
-      UPDATE users SET incorrect = incorrect + 1, updated_at = datetime('now')
+      UPDATE users SET incorrect = incorrect + 1, current_streak = 0, updated_at = datetime('now')
       WHERE guild_id = ? AND discord_id = ?
     `).run(guildId, discordId);
   }
@@ -266,6 +311,20 @@ export function setGuildChannel(guildId, channelId) {
 export function getGuildChannel(guildId) {
   const row = db.prepare('SELECT channel_id FROM guild_settings WHERE guild_id = ?').get(guildId);
   return row?.channel_id || null;
+}
+
+export function isEmojiEnabled(guildId) {
+  const row = db.prepare('SELECT emoji_enabled FROM guild_settings WHERE guild_id = ?').get(guildId);
+  return row ? row.emoji_enabled === 1 : true; // default on
+}
+
+export function setEmojiEnabled(guildId, enabled) {
+  const row = db.prepare('SELECT guild_id FROM guild_settings WHERE guild_id = ?').get(guildId);
+  if (row) {
+    db.prepare('UPDATE guild_settings SET emoji_enabled = ?, updated_at = datetime(\'now\') WHERE guild_id = ?').run(enabled ? 1 : 0, guildId);
+  } else {
+    db.prepare('INSERT INTO guild_settings (guild_id, channel_id, emoji_enabled) VALUES (?, \'\', ?)').run(guildId, enabled ? 1 : 0);
+  }
 }
 
 // Parley
@@ -363,6 +422,27 @@ export function updatePeakRank(guildId, puuid, tier, rank, lp, rankValue) {
 
 export function getPeakRanks(guildId) {
   return db.prepare('SELECT riot_tag, peak_tier, peak_rank, peak_lp FROM tracked_players WHERE guild_id = ?').all(guildId);
+}
+
+// Auto-bets
+export function setAutoBet(guildId, discordId, puuid, prediction, amount) {
+  return db.prepare(`
+    INSERT INTO auto_bets (guild_id, discord_id, puuid, prediction, amount)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(guild_id, discord_id, puuid) DO UPDATE SET prediction = ?, amount = ?
+  `).run(guildId, discordId, puuid, prediction, amount, prediction, amount);
+}
+
+export function removeAutoBet(guildId, discordId, puuid) {
+  return db.prepare('DELETE FROM auto_bets WHERE guild_id = ? AND discord_id = ? AND puuid = ?').run(guildId, discordId, puuid);
+}
+
+export function getAutoBets(guildId, discordId) {
+  return db.prepare('SELECT ab.*, tp.riot_tag FROM auto_bets ab JOIN tracked_players tp ON ab.guild_id = tp.guild_id AND ab.puuid = tp.puuid WHERE ab.guild_id = ? AND ab.discord_id = ?').all(guildId, discordId);
+}
+
+export function getAutoBetsForMatch(guildId, puuid) {
+  return db.prepare('SELECT * FROM auto_bets WHERE guild_id = ? AND puuid = ?').all(guildId, puuid);
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────

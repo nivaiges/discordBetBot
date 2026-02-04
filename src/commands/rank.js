@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getRankedStatsByPuuid } from '../riot.js';
-import { getTrackedPlayers } from '../db.js';
+import { getTrackedPlayers, isEmojiEnabled } from '../db.js';
 import config from '../../config.js';
 
 const TIER_ORDER = [
@@ -68,10 +68,11 @@ export async function execute(interaction) {
     return 0;
   });
 
+  const emojiOn = isEmojiEnabled(guildId);
   const lines = results.map((r, i) => {
     const pos = `${i + 1}.`;
     if (r.rank) {
-      const emoji = config.getRankEmoji(r.tier);
+      const emoji = emojiOn ? config.getRankEmoji(r.tier) : '';
       const prefix = emoji ? `${emoji} ` : '';
       return `${pos} ${prefix}**${r.tag}** — ${r.rank} (${r.lp} LP) • ${r.record}`;
     }

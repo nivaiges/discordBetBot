@@ -8,11 +8,14 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction) {
   const user = ensureUser(interaction.guildId, interaction.user.id);
 
+  const streakDisplay = user.current_streak > 0 ? `${user.current_streak} 🔥` : '0';
+
   const embed = new EmbedBuilder()
     .setTitle(`📊 Stats for ${interaction.user.username}`)
     .addFields(
       { name: '🪙 Coins', value: user.coins.toLocaleString(), inline: true },
       { name: '🎯 Record', value: `${user.correct}W / ${user.incorrect}L`, inline: true },
+      { name: '🔥 Streak', value: `${streakDisplay} (Best: ${user.best_streak})`, inline: true },
       { name: '💸 Total Wagered', value: user.total_wagered.toLocaleString(), inline: true },
       { name: '💰 Total Won', value: user.total_won.toLocaleString(), inline: true },
     )

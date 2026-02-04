@@ -4,7 +4,7 @@ import config from '../../config.js';
 
 export const data = new SlashCommandBuilder()
   .setName('collect')
-  .setDescription('Collect your daily 10,000 coins');
+  .setDescription('Collect 10,000 coins every 2 hours');
 
 export async function execute(interaction) {
   const guildId = interaction.guildId;
@@ -23,7 +23,7 @@ export async function execute(interaction) {
       const minutes = Math.floor((remaining % 3_600_000) / 60_000);
       const seconds = Math.floor((remaining % 60_000) / 1_000);
       return interaction.reply({
-        content: `⏳ You already collected today. Come back in **${hours}h ${minutes}m ${seconds}s**.`,
+        content: `⏳ You already collected recently. Come back in **${hours}h ${minutes}m ${seconds}s**.`,
         ephemeral: true,
       });
     }

@@ -34,7 +34,7 @@ const PLATFORM_TO_REGIONAL = {
 const config = {
   // Currency
   collectAmount: 10_000,
-  collectCooldownMs: 24 * 60 * 60 * 1000, // 24 hours
+  collectCooldownMs: 2 * 60 * 60 * 1000, // 2 hours
 
   // Polling
   pollIntervalMs: parseInt(process.env.POLL_INTERVAL_MS || '60000', 10),
@@ -59,10 +59,11 @@ const config = {
   },
 
   // Betting window (time after match detection to allow bets)
-  bettingWindowMs: 3 * 60 * 1000, // 3 minutes
+  bettingWindowMs: 5 * 60 * 1000, // 5 minutes
 
-  // Bet payout multiplier
-  payoutMultiplier: 1.5,
+  // Bet payout multipliers
+  payoutMultiplier: 1.5,       // WIN bets pay 1.5x
+  losePayoutMultiplier: 3,     // LOSE bets pay 3x
 
   // Parley (over/under stat bets)
   parleyChance: 0.1,          // 10% of matches get a parley

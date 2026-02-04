@@ -4,45 +4,66 @@ A Discord bot for betting on friends' League of Legends games using the Riot API
 
 ## Features
 
-- `/collect` — Collect 10,000 coins daily (24h rolling cooldown)
+- `/collect` — Collect 10,000 coins (2h rolling cooldown)
 - `/adduser <GameName#TagLine>` — Track a League player for betting
+- `/removeuser <GameName#TagLine>` — Stop tracking a player (also removes their auto-bets)
 - `/bet <win|lose> <amount> [player]` — Bet on a tracked player's match (also available via buttons)
+- `/autobet [player] [prediction] [amount]` — Auto-bet on a player every game
+- `/give <@user> <amount>` — Give coins to another user
 - `/baltop` — Leaderboard of top coin holders
-- `/stats` — Your personal betting stats (W/L, wagered, won)
+- `/stats` — Your personal betting stats (W/L, streak, wagered, won)
 - `/rank` — Leaderboard of all tracked players' Solo/Duo ranks
+- `/peak` — All-time peak Solo/Duo rank for each tracked player
+- `/emoji <on|off>` — Toggle rank emojis on/off (for servers without custom emoji)
 - `/bethere` — Set the current channel for betting notifications
+- `/help` — List all commands
 - **Auto-detect matches** — Polls Riot Spectator API and posts WIN/LOSE buttons when a tracked player enters a game
 - **Average lobby rank** — Shows the average Solo/Duo rank of players in the detected match
-- **3-minute betting window** — Bets close 3 minutes after match detection
-- **Auto-settle bets** — When a match ends, payouts are calculated (1.5x for correct bets) and results are announced
-- **Daily W/L tracking** — Match results show each player's win/loss record for the day
+- **Custom rank icons** — Configurable Discord emoji for each rank tier
+- **5-minute betting window** — Bets close 5 minutes after match detection
+- **Asymmetric payouts** — WIN bets pay 1.5x, LOSE bets pay 3x (higher risk, higher reward)
+- **Auto-settle bets** — When a match ends, payouts are calculated and results are announced
+- **Betting streaks** — Consecutive correct bets build a streak shown in results and `/stats`
+- **Coin gifting** — Transfer coins to other users with `/give`
+- **Auto-bet** — Users can set recurring bets that fire automatically on match detection
+- **Daily win streak** — Match results show the player's daily W/L when they're winning (>50%)
+- **Peak rank tracking** — Highest rank is recorded after each win
 - **Auto-cleanup** — Match detected and betting closed messages are deleted when the match ends
 - **Parley bets** — 10% of matches get an over/under stat bet (kills/deaths/KDA) with 2x payout
 - **PUUID auto-refresh** — PUUIDs are re-fetched on startup when rotating Riot API keys
 
-## Setup
+## Self-Hosting Guide
 
-### Prerequisites
+Anyone can run their own instance of this bot. You'll need your own Discord bot token and Riot API key (both are free).
 
-- Node.js 20+
-- A [Discord bot token](https://discord.com/developers/applications)
-- A [Riot API key](https://developer.riotgames.com/)
+### Step 1: Get a Discord Bot Token
 
-### Install
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
+2. Click **New Application**, give it a name, and create it
+3. Go to the **Bot** tab and click **Reset Token** — copy and save this token
+4. Under **Privileged Gateway Intents**, you don't need any special intents
+5. Go to **OAuth2 > URL Generator**:
+   - Scopes: `bot`, `applications.commands`
+   - Bot Permissions: `Send Messages`, `Embed Links`, `Read Message History`, `Manage Messages`
+6. Copy the generated URL and open it in your browser to invite the bot to your server
+
+### Step 2: Get a Riot API Key
+
+1. Go to [developer.riotgames.com](https://developer.riotgames.com/) and sign in with your Riot account
+2. Your **Development API Key** is shown on the dashboard — copy it
+
+> **Note:** Development keys expire every 24 hours and need to be regenerated. For a permanent key, you can [register a production app](https://developer.riotgames.com/app-type), but the development key works fine for personal use.
+
+### Step 3: Install and Run
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/nivaiges/discordBetBot.git
 cd discordBetBot
 npm install
-```
-
-### Configure
-
-```bash
 cp .env.example .env
 ```
 
-Edit `.env` with your secrets:
+Edit `.env` with your keys:
 
 ```
 DISCORD_TOKEN=your_discord_bot_token
@@ -51,14 +72,23 @@ RIOT_REGION=na1
 LOG_LEVEL=info
 ```
 
-### Discord Bot Setup
+Set `RIOT_REGION` to your server's platform code:
 
-1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
-2. Under **OAuth2 URL Generator**, select scopes: `bot`, `applications.commands`
-3. Under **Bot Permissions**, select: `Send Messages`, `Embed Links`, `Read Message History`, `Manage Messages`
-4. Use the generated URL to invite the bot to your server
+| Region | Code |
+|---|---|
+| North America | `na1` |
+| EU West | `euw1` |
+| EU Nordic & East | `eun1` |
+| Korea | `kr` |
+| Japan | `jp1` |
+| Brazil | `br1` |
+| Oceania | `oc1` |
+| Latin America North | `la1` |
+| Latin America South | `la2` |
+| Turkey | `tr1` |
+| Russia | `ru` |
 
-### Run
+Then start the bot:
 
 ```bash
 npm start
@@ -70,10 +100,47 @@ For development with auto-restart on file changes:
 npm run start:watch
 ```
 
-### Run Tests
+### Step 4: First-Time Setup in Discord
+
+1. Use `/bethere` in the channel where you want betting notifications
+2. Use `/adduser YourName#TAG` to start tracking a player
+3. When the tracked player enters a ranked game, the bot will automatically post betting buttons
+
+## Updating the Bot
+
+If you downloaded the bot as a ZIP or copied the files manually (no `.git` folder), you'll need to set up git tracking first before you can pull updates.
+
+### If you don't have a `.git` folder
 
 ```bash
-npm test
+cd discordBetBot
+git init
+git remote add origin https://github.com/nivaiges/discordBetBot.git
+git fetch origin
+git reset origin/main
+git checkout -- .
+npm install
+```
+
+This connects your local copy to the repo without overwriting your `.env` or `bot.db` — your config and database are preserved.
+
+### If you already have `.git` set up
+
+```bash
+cd discordBetBot
+git pull
+npm install
+```
+
+Then restart the bot. New database columns are added automatically on startup — no data is lost.
+
+### On Raspberry Pi (systemd)
+
+```bash
+cd discordBetBot
+git pull
+npm install
+sudo systemctl restart discord-bet-bot
 ```
 
 ## Raspberry Pi Deployment
@@ -81,13 +148,19 @@ npm test
 ### Quick Setup
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/nivaiges/discordBetBot.git
 cd discordBetBot
 chmod +x setup-pi.sh
 ./setup-pi.sh
 ```
 
 This single script installs Node.js 20, build tools, npm dependencies, creates `.env` from template, and sets up a systemd service with auto-restart on crash and reboot.
+
+After the script runs, edit your `.env` with your keys, then:
+
+```bash
+sudo systemctl restart discord-bet-bot
+```
 
 ### Manual Setup
 
@@ -112,7 +185,37 @@ sudo systemctl stop discord-bet-bot       # Stop
 
 The bot will auto-restart on crash (10s delay) or reboot.
 
-## Riot API Region Routing
+## Configuration
+
+Adjustable values in `config.js`:
+
+| Setting | Default | Description |
+|---|---|---|
+| `collectAmount` | 10,000 | Coins per collect |
+| `collectCooldownMs` | 2 hours | Time between collects |
+| `pollIntervalMs` | 60,000ms | How often to check for active games |
+| `bettingWindowMs` | 300,000ms | Time to place bets after match detection |
+| `payoutMultiplier` | 1.5 | Payout multiplier for correct WIN bets |
+| `losePayoutMultiplier` | 3 | Payout multiplier for correct LOSE bets |
+| `parleyChance` | 0.1 | Chance of parley bet per match (10%) |
+| `parleyPayoutMultiplier` | 2 | Payout multiplier for correct parley bets |
+| `commandCooldownMs` | 5,000ms | Per-user rate limit between commands |
+
+### Custom Rank Emoji
+
+To show rank icons in bot messages, upload rank images as custom emoji in your Discord server, then fill in the IDs in `config.js`:
+
+```js
+rankEmoji: {
+  IRON: '<:Iron:123456789>',
+  BRONZE: '<:Bronze:123456789>',
+  // ...
+},
+```
+
+To get an emoji ID: type `\:emojiname:` in Discord and send — it shows `<:name:ID>`.
+
+## Riot API Notes
 
 The bot uses two types of Riot API endpoints:
 
@@ -121,19 +224,4 @@ The bot uses two types of Riot API endpoints:
 | Platform (region) | `na1.api.riotgames.com` | Spectator, League |
 | Regional (continent) | `americas.api.riotgames.com` | Account, Match history |
 
-Set `RIOT_REGION` in `.env` to your platform code (e.g. `na1`, `euw1`, `kr`). The bot automatically maps it to the correct regional endpoint.
-
-## Configuration
-
-Adjustable values in `config.js`:
-
-| Setting | Default | Description |
-|---|---|---|
-| `collectAmount` | 10,000 | Coins per daily collect |
-| `collectCooldownMs` | 24 hours | Time between collects |
-| `pollIntervalMs` | 60,000ms | How often to check for active games |
-| `bettingWindowMs` | 180,000ms | Time to place bets after match detection |
-| `payoutMultiplier` | 1.5 | Payout multiplier for correct bets |
-| `parleyChance` | 0.1 | Chance of parley bet per match (10%) |
-| `parleyPayoutMultiplier` | 2 | Payout multiplier for correct parley bets |
-| `commandCooldownMs` | 5,000ms | Per-user rate limit between commands |
+The bot automatically maps your `RIOT_REGION` to the correct regional endpoint. If you rotate your Riot API key, just update `.env` and restart — PUUIDs are refreshed automatically on startup.

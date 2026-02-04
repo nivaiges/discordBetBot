@@ -31,6 +31,11 @@ import * as stats from './commands/stats.js';
 import * as rank from './commands/rank.js';
 import * as bethere from './commands/bethere.js';
 import * as peak from './commands/peak.js';
+import * as autobet from './commands/autobet.js';
+import * as removeuser from './commands/removeuser.js';
+import * as give from './commands/give.js';
+import * as emoji from './commands/emoji.js';
+import * as help from './commands/help.js';
 
 // ── Validate env ─────────────────────────────────────────────────────────────
 
@@ -48,20 +53,26 @@ if (!RIOT_API_KEY) {
 
 // ── Build command collection ─────────────────────────────────────────────────
 
-const commands = [collect, adduser, bet, baltop, stats, rank, bethere, peak];
+const commands = [collect, adduser, removeuser, bet, baltop, stats, rank, bethere, peak, autobet, give, emoji, help];
 const commandCollection = new Collection();
 for (const cmd of commands) {
   commandCollection.set(cmd.data.name, cmd);
 }
 
-// ── Register slash commands globally ─────────────────────────────────────────
+// ── Register slash commands per guild (instant updates) ─────────────────────
 
 async function registerCommands(clientId) {
   const rest = new REST().setToken(DISCORD_TOKEN);
   const body = commands.map(c => c.data.toJSON());
 
-  logger.info({ count: body.length }, 'Registering slash commands');
-  await rest.put(Routes.applicationCommands(clientId), { body });
+  // Clear stale global commands
+  await rest.put(Routes.applicationCommands(clientId), { body: [] }).catch(() => {});
+
+  // Register per-guild for instant propagation
+  for (const guild of client.guilds.cache.values()) {
+    logger.info({ guildId: guild.id, count: body.length }, 'Registering guild commands');
+    await rest.put(Routes.applicationGuildCommands(clientId, guild.id), { body });
+  }
   logger.info('Slash commands registered');
 }
 
