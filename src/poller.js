@@ -184,12 +184,6 @@ async function checkForNewMatches() {
         const champ = getChampionName(p.championId);
         return p.puuid === player.puuid ? `**${champ}** (${name})` : champ;
       }).join(', ');
-      const buildMultisearch = (team) => {
-        const names = team.map(p => p.riotId).filter(Boolean);
-        if (!names.length) return null;
-        const encoded = names.map(n => encodeURIComponent(n)).join(',');
-        return `https://u.gg/lol/multisearch?summoners=${encoded}&region=${player.region}`;
-      };
 
       // Roll for parley (over/under or yes/no stat bet)
       const hasParley = Math.random() < config.parleyChance;
@@ -214,8 +208,8 @@ async function checkForNewMatches() {
         .setDescription(`**${name}**${titleChamp} (${sideLabel})\n\n⏰ Betting closes in **5 minutes** — place your bets!\n🟢 WIN pays **${config.payoutMultiplier}x** · 🔴 LOSE pays **${config.losePayoutMultiplier}x**`)
         .addFields(
           { name: '📊 Avg Rank', value: avgRank, inline: true },
-          { name: `🔵 ${name}'s Team`, value: (formatTeam(allies) || 'Unknown') + (buildMultisearch(allies) ? `\n[u.gg Multisearch](${buildMultisearch(allies)})` : ''), inline: false },
-          { name: '🔴 Enemy Team', value: (formatTeam(enemies) || 'Unknown') + (buildMultisearch(enemies) ? `\n[u.gg Multisearch](${buildMultisearch(enemies)})` : ''), inline: false },
+          { name: `🔵 ${name}'s Team`, value: formatTeam(allies) || 'Unknown', inline: false },
+          { name: '🔴 Enemy Team', value: formatTeam(enemies) || 'Unknown', inline: false },
         )
         .setColor(0x2ecc71)
         .setTimestamp();
